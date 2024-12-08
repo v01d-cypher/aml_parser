@@ -3,7 +3,7 @@ import os.path
 from sqlalchemy import func
 from sqlmodel import Session, col, create_engine, or_, select
 
-from lib.db_datamodel import Group, Model, ObjDef, ObjOcc
+from lib.db_datamodel import CxnDef, CxnOcc, Group, Model, ObjDef, ObjOcc
 from lib.parser import AMLParser
 
 
@@ -141,12 +141,15 @@ class AMLQuery:
         return [occ for occ in occs if occ.symbol in symbol_types]
 
     def db_stats(self, session: Session) -> dict:
-        groups_count = session.exec(select(func.count(col(Group.id)))).one()
-        models_count = session.exec(select(func.count(col(Model.id)))).one()
-        obj_defs_count = session.exec(select(func.count(col(ObjDef.id)))).one()
-
-        return {
-            "groups": groups_count,
-            "obj_defs": obj_defs_count,
-            "models": models_count,
+        stats = {
+            "groups": Group,
+            "cxn_defs": CxnDef,
+            "obj_defs": ObjDef,
+            "cxn_occs": CxnOcc,
+            "obj_occ": ObjOcc,
+            "models": Model,
         }
+        for obj_type, db_type in stats.items():
+            stats[obj_type] = session.exec(select(func.count(col(db_type.id)))).one()
+
+        return stats
