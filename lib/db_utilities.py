@@ -1,12 +1,13 @@
 import copy
 import os
+from functools import partial
 
 from sqlmodel import Session, SQLModel, create_engine
 
 from lib.db_datamodel import Attr, CxnDef, CxnOcc, Group, Model, ObjDef, ObjOcc
 
 
-def create_group(group, data):
+def create_group(group):
     attrs = [
         Attr(name=name, value=value) for name, value in group.get("attrs", {}).items()
     ]
@@ -21,7 +22,7 @@ def create_group(group, data):
     )
 
 
-def create_cxn_def(cxn_def, data):
+def create_cxn_def(cxn_def):
     attrs = [
         Attr(name=name, value=value) for name, value in cxn_def.get("attrs", {}).items()
     ]
@@ -34,16 +35,16 @@ def create_cxn_def(cxn_def, data):
     )
 
 
-def create_obj_def(obj_def, data):
+def create_obj_def(db_data, obj_def):
     attrs = [
         Attr(name=name, value=value) for name, value in obj_def.get("attrs", {}).items()
     ]
 
-    cxns = [data["cxn_defs"][cxn_id] for cxn_id in obj_def.get("cxns", [])]
+    cxns = [db_data[cxn_id] for cxn_id in obj_def.get("cxns", [])]
 
     return ObjDef(
         aris_id=obj_def["aris_id"],
-        parent=data["groups"][obj_def["parent"]],
+        parent=db_data[obj_def["parent"]],
         guid=obj_def["guid"],
         name=obj_def["name"],
         type=obj_def["type"],
@@ -54,34 +55,34 @@ def create_obj_def(obj_def, data):
     )
 
 
-def create_cxn_occ(cxn_occ, db_obj_occs, data):
+def create_cxn_occ(db_data, cxn_occ, db_obj_occs):
     return CxnOcc(
         aris_id=cxn_occ["aris_id"],
-        cxn_def=data["cxn_defs"][cxn_occ["cxn_def"]],
+        cxn_def=db_data[cxn_occ["cxn_def"]],
         connected_to=db_obj_occs.get(cxn_occ.get("connected_to")),
     )
 
 
-def create_obj_occ(obj_occ, model, data):
+def create_obj_occ(db_data, obj_occ, model):
     return ObjOcc(
         aris_id=obj_occ["aris_id"],
         symbol=obj_occ["symbol"],
         derived_symbol=obj_occ.get("derived_symbol"),
         x=obj_occ["x"],
         y=obj_occ["y"],
-        obj_def=data["obj_defs"][obj_occ["obj_def"]],
+        obj_def=db_data[obj_occ["obj_def"]],
         model=model,
     )
 
 
-def create_model(model, data):
+def create_model(db_data, model):
     attrs = [
         Attr(name=name, value=value) for name, value in model.get("attrs", {}).items()
     ]
 
     db_model = Model(
         aris_id=model["aris_id"],
-        parent=data["groups"][model["parent"]],
+        parent=db_data[model["parent"]],
         guid=model["guid"],
         name=model["name"],
         type=model["type"],
@@ -91,14 +92,14 @@ def create_model(model, data):
 
     # First create all obj_occs as cxn_occs need to be connected to them
     db_obj_occs = {
-        obj_occ_id: create_obj_occ(obj_occ, db_model, data)
+        obj_occ_id: create_obj_occ(db_data, obj_occ, db_model)
         for obj_occ_id, obj_occ in model.get("occs", {}).items()
     }
 
     for obj_occ_id, obj_occ in model.get("occs", {}).items():
         db_obj_occ = db_obj_occs[obj_occ_id]
         db_obj_occ.cxns = [
-            create_cxn_occ(cxn_occ, db_obj_occs, data)
+            create_cxn_occ(db_data, cxn_occ, db_obj_occs)
             for cxn_occ in obj_occ.get("cxns", {}).values()
         ]
 
@@ -107,27 +108,25 @@ def create_model(model, data):
     return db_model
 
 
-def link_cxn_defs_to_obj_defs(data):
-    for cxn_def_id, cxn_def in data["org_cxn_defs"].items():
-        db_cxn_def = data["cxn_defs"][cxn_def_id]
+def link_cxn_defs_to_obj_defs(db_data, data):
+    for cxn_def_id, cxn_def in data["cxn_defs"].items():
+        db_cxn_def = db_data[cxn_def_id]
 
         connected_to = cxn_def.get("connected_to")
         if connected_to:
-            db_cxn_def.connected_to = data["obj_defs"][connected_to]
+            db_cxn_def.connected_to = db_data[connected_to]
 
 
-def link_superior_defs_to_models(data):
+def link_superior_defs_to_models(db_data, data):
     for obj_def_id, model_ids in data["def_to_models"].items():
         if len(model_ids) > 0:
-            db_obj_def = data["obj_defs"][obj_def_id]
-            db_obj_def.linked_models = [
-                data["models"][model_id] for model_id in model_ids
-            ]
+            db_obj_def = db_data[obj_def_id]
+            db_obj_def.linked_models = [db_data[model_id] for model_id in model_ids]
 
 
-def link_group_parent(data):
-    for group_id, db_group in data["groups"].items():
-        db_group.parent = data["groups"].get(data["org_groups"][group_id]["parent"])
+def link_group_parent(db_data, data):
+    for group_id, group in data["groups"].items():
+        db_data[group_id].parent = db_data.get(group["parent"])
 
 
 def create_database(data, sqlite_filename):
@@ -139,27 +138,25 @@ def create_database(data, sqlite_filename):
     engine = create_engine(sqlite_url, echo=False)
     SQLModel.metadata.create_all(engine)
 
-    data["org_cxn_defs"] = copy.deepcopy(data["cxn_defs"])
-    data["org_groups"] = copy.deepcopy(data["groups"])
+    db_data = {}
 
     type_and_func = (
         ("groups", create_group),
         ("cxn_defs", create_cxn_def),
-        ("obj_defs", create_obj_def),
-        ("models", create_model),
+        ("obj_defs", partial(create_obj_def, db_data)),
+        ("models", partial(create_model, db_data)),
     )
 
     with Session(engine) as session:
         for aris_type, func in type_and_func:
             for item in data[aris_type].values():
-                db_item = func(item, data)
-                data[aris_type][item["aris_id"]] = db_item
+                db_data[item["aris_id"]] = func(item)
 
                 if aris_type == "models":
-                    session.add(db_item)
+                    session.add(db_data[item["aris_id"]])
 
-        link_group_parent(data)
-        link_cxn_defs_to_obj_defs(data)
-        link_superior_defs_to_models(data)
+        link_group_parent(db_data, data)
+        link_cxn_defs_to_obj_defs(db_data, data)
+        link_superior_defs_to_models(db_data, data)
 
         session.commit()
