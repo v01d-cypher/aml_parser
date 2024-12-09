@@ -12,11 +12,16 @@ class AMLParser:
     """
 
     def __init__(self, aml_filename):
-        self.groups = {}
-        self.obj_defs = {}
-        self.cxn_defs = {}
-        self.models = {}
-        self.def_to_models = {}
+        self.data = {
+            "groups": {},
+            "cxn_defs": {},
+            "obj_defs": {},
+            "cxn_occs": {},
+            "obj_occs": {},
+            "models": {},
+            "def_to_models": {},
+        }
+
         self.path = []
         self.parse_aml(aml_filename)
 
@@ -26,17 +31,9 @@ class AMLParser:
         context = ET.iterparse(aml_filename, ("start", "end"))
         self.low_memory_iter(context)
 
-        data = {
-            "groups": self.groups,
-            "obj_defs": self.obj_defs,
-            "cxn_defs": self.cxn_defs,
-            "models": self.models,
-            "def_to_models": self.def_to_models,
-        }
-
         sqlite_filename = f"{os.path.splitext(aml_filename)[0]}.db"
         print(f"Creating SQLite Database '{sqlite_filename}' ...")
-        create_database(data, sqlite_filename)
+        create_database(self.data, sqlite_filename)
 
     def parse_attr_defs(self, item):
         attrs = {}
@@ -77,7 +74,9 @@ class AMLParser:
                 "connected_to": cxn.get("ToObjOcc.IdRef"),
             }
 
-        return occ_cxns
+            self.data["cxn_occs"].update(occ_cxns)
+
+        return list(occ_cxns.keys())
 
     def parse_obj_occs(self, item):
         occs = {}
@@ -105,7 +104,9 @@ class AMLParser:
 
             occs.setdefault(id, {}).update(new_values)
 
-        return occs
+            self.data["obj_occs"].update(occs)
+
+        return list(occs.keys())
 
     def parse_cxn_defs(self, item):
         obj_cxns = {}
@@ -123,7 +124,7 @@ class AMLParser:
                 "attrs": attrs,
             }
 
-            self.cxn_defs.update(obj_cxns)
+            self.data["cxn_defs"].update(obj_cxns)
 
         return obj_cxns
 
@@ -150,9 +151,9 @@ class AMLParser:
                 "path": "/".join(self.path),
             }
 
-            self.obj_defs.setdefault(id, {}).update(new_values)
+            self.data["obj_defs"].setdefault(id, {}).update(new_values)
 
-            self.def_to_models.setdefault(id, []).extend(linked_models)
+            self.data["def_to_models"].setdefault(id, []).extend(linked_models)
 
     def parse_models(self, item):
         obj_models = item.findall("Model")
@@ -160,7 +161,7 @@ class AMLParser:
             id = model.get("Model.ID")
             name, attrs = self.parse_attr_defs(model)
 
-            self.models[id] = {
+            self.data["models"][id] = {
                 "aris_id": id,
                 "parent": model.getparent().get("Group.ID"),
                 "guid": model.find("GUID").text,
@@ -181,7 +182,7 @@ class AMLParser:
                 _, attrs = self.parse_attr_defs(element)
                 self.path.append(".")
 
-                self.groups["Group.Root"] = {
+                self.data["groups"]["Group.Root"] = {
                     "aris_id": "Group.Root",
                     "guid": None,
                     "name": ".",
@@ -198,7 +199,7 @@ class AMLParser:
                 self.path.append(name)
 
                 group_id = element.get("Group.ID")
-                self.groups[group_id] = {
+                self.data["groups"][group_id] = {
                     "aris_id": group_id,
                     "guid": element.find("GUID").text,
                     "name": name,

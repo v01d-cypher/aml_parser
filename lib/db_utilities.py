@@ -55,15 +55,14 @@ def create_obj_def(db_data, obj_def):
     )
 
 
-def create_cxn_occ(db_data, cxn_occ, db_obj_occs):
+def create_cxn_occ(db_data, cxn_occ):
     return CxnOcc(
         aris_id=cxn_occ["aris_id"],
         cxn_def=db_data[cxn_occ["cxn_def"]],
-        connected_to=db_obj_occs.get(cxn_occ.get("connected_to")),
     )
 
 
-def create_obj_occ(db_data, obj_occ, model):
+def create_obj_occ(db_data, obj_occ):
     return ObjOcc(
         aris_id=obj_occ["aris_id"],
         symbol=obj_occ["symbol"],
@@ -71,7 +70,8 @@ def create_obj_occ(db_data, obj_occ, model):
         x=obj_occ["x"],
         y=obj_occ["y"],
         obj_def=db_data[obj_occ["obj_def"]],
-        model=model,
+        model=db_data[obj_occ["model_id"]],
+        cxns=[db_data[cxn_id] for cxn_id in obj_occ.get("cxns", [])],
     )
 
 
@@ -90,22 +90,12 @@ def create_model(db_data, model):
         path=model["path"],
     )
 
-    # First create all obj_occs as cxn_occs need to be connected to them
-    db_obj_occs = {
-        obj_occ_id: create_obj_occ(db_data, obj_occ, db_model)
-        for obj_occ_id, obj_occ in model.get("occs", {}).items()
-    }
-
-    for obj_occ_id, obj_occ in model.get("occs", {}).items():
-        db_obj_occ = db_obj_occs[obj_occ_id]
-        db_obj_occ.cxns = [
-            create_cxn_occ(db_data, cxn_occ, db_obj_occs)
-            for cxn_occ in obj_occ.get("cxns", {}).values()
-        ]
-
-    db_model.occs = list(db_obj_occs.values())
-
     return db_model
+
+
+def link_group_parent(db_data, data):
+    for group_id, group in data["groups"].items():
+        db_data[group_id].parent = db_data.get(group["parent"])
 
 
 def link_cxn_defs_to_obj_defs(db_data, data):
@@ -117,6 +107,15 @@ def link_cxn_defs_to_obj_defs(db_data, data):
             db_cxn_def.connected_to = db_data[connected_to]
 
 
+def link_cxn_occs_to_obj_occs(db_data, data):
+    for cxn_occ_id, cxn_occ in data["cxn_occs"].items():
+        db_cxn_occ = db_data[cxn_occ_id]
+
+        connected_to = cxn_occ.get("connected_to")
+        if connected_to:
+            db_cxn_occ.connected_to = db_data[connected_to]
+
+
 def link_superior_defs_to_models(db_data, data):
     for obj_def_id, model_ids in data["def_to_models"].items():
         if len(model_ids) > 0:
@@ -124,9 +123,9 @@ def link_superior_defs_to_models(db_data, data):
             db_obj_def.linked_models = [db_data[model_id] for model_id in model_ids]
 
 
-def link_group_parent(db_data, data):
-    for group_id, group in data["groups"].items():
-        db_data[group_id].parent = db_data.get(group["parent"])
+def add_obj_occs_to_model(db_data, data):
+    for model_id, model in data["models"].items():
+        db_data[model_id].occs = [db_data[occ_id] for occ_id in model.get("occs", [])]
 
 
 def create_database(data, sqlite_filename):
@@ -145,6 +144,8 @@ def create_database(data, sqlite_filename):
         ("cxn_defs", create_cxn_def),
         ("obj_defs", partial(create_obj_def, db_data)),
         ("models", partial(create_model, db_data)),
+        ("cxn_occs", partial(create_cxn_occ, db_data)),
+        ("obj_occs", partial(create_obj_occ, db_data)),
     )
 
     with Session(engine) as session:
@@ -157,6 +158,8 @@ def create_database(data, sqlite_filename):
 
         link_group_parent(db_data, data)
         link_cxn_defs_to_obj_defs(db_data, data)
+        link_cxn_occs_to_obj_occs(db_data, data)
+        add_obj_occs_to_model(db_data, data)
         link_superior_defs_to_models(db_data, data)
 
         session.commit()
