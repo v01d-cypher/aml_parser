@@ -83,6 +83,7 @@ class CxnDef(SQLModel, AttrMixin, table=True):
     )
 
     obj_def_id: int = Field(foreign_key="objdef.id")
+    occs: list["CxnOcc"] = Relationship(back_populates="cxn_def")
 
     attrs: list[Attr] | None = Relationship()
     aris_type: str = Field(default="CxnDef")
@@ -146,7 +147,7 @@ class CxnOcc(SQLModel, table=True):
     aris_id: str
 
     cxn_def_id: int = Field(foreign_key="cxndef.id")
-    cxn_def: CxnDef = Relationship()
+    cxn_def: CxnDef = Relationship(back_populates="occs")
 
     # Even though "connected_to" is 1-to-1 we use a linking table because we already
     # have a foreign key linking these two tables for "cxns" on the ObjOcc.
