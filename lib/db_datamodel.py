@@ -174,6 +174,8 @@ class ObjOcc(SQLModel, table=True):
     derived_symbol: str | None = Field(default=None)
     x: int = Field(default=0)
     y: int = Field(default=0)
+    width: int = Field(default=0)
+    height: int = Field(default=0)
 
     obj_def_id: int = Field(foreign_key="objdef.id")
     obj_def: ObjDef = Relationship(back_populates="occs")

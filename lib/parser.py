@@ -86,6 +86,7 @@ class AMLParser:
             id = occ.get("ObjOcc.ID")
             symbol_GUID = occ.find("SymbolGUID")
             position = occ.find("Position").attrib
+            size = occ.find("Size").attrib
 
             new_values = {
                 "aris_id": id,
@@ -93,6 +94,8 @@ class AMLParser:
                 "obj_def": occ.get("ObjDef.IdRef", ""),
                 "x": int(position.get("Pos.X", "0")),
                 "y": int(position.get("Pos.Y", "0")),
+                "width": int(size.get("Size.dX", "0")),
+                "height": int(size.get("Size.dY", "0")),
                 "cxns": self.parse_cxn_occs(occ),
             }
 

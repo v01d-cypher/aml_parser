@@ -69,6 +69,8 @@ def create_obj_occ(db_data, obj_occ):
         derived_symbol=obj_occ.get("derived_symbol"),
         x=obj_occ["x"],
         y=obj_occ["y"],
+        width=obj_occ["width"],
+        height=obj_occ["height"],
         obj_def=db_data[obj_occ["obj_def"]],
         model=db_data[obj_occ["model_id"]],
         cxns=[db_data[cxn_id] for cxn_id in obj_occ.get("cxns", [])],
