@@ -21,7 +21,7 @@ class AMLQuery:
 
         sqlite_url = f"sqlite:///{sqlite_filename}"
         self.engine = create_engine(sqlite_url, echo=False)
-        print(f"Opened '{sqlite_filename}'.")
+        print(f"Opened Database: '{sqlite_filename}'.\n")
 
     def get_assigned_fad(self, item: ObjDef | ObjOcc) -> Model | None:
         """
@@ -47,9 +47,11 @@ class AMLQuery:
         obj_occ: ObjOcc,
         symbol_types: list[str] | str = None,
         cxn_types: list[str] | str = None,
+        direction: str = "out",
     ) -> list[ObjOcc]:
         """
         Return connected occurances, optionally filtered by connection type and/or symbol.
+        Specify direction of connections as "in", "out" or "both"
         """
 
         if symbol_types is not None:
@@ -60,44 +62,76 @@ class AMLQuery:
         if cxn_types is not None:
             cxn_types = cxn_types if isinstance(cxn_types, list) else [cxn_types]
 
-        connected_occs = [
-            cxn.connected_to
-            for cxn in obj_occ.cxns
-            if (cxn.connected_to is not None)
-            and (cxn.type in cxn_types if cxn_types is not None else True)
-            and (
-                cxn.connected_to.symbol in symbol_types
-                if symbol_types is not None
-                else True
-            )
-        ]
+        if direction not in ["in", "out", "both"]:
+            direction = "out"
 
-        for occ in obj_occ.model.occs:
-            for cxn in occ.cxns:
-                if (
-                    cxn.connected_to == obj_occ
-                    and (cxn.type in cxn_types if cxn_types is not None else True)
-                    and (
-                        occ.symbol in symbol_types if symbol_types is not None else True
-                    )
-                ):
-                    connected_occs.append(occ)
+        if direction in ["in", "both"]:
+            in_connected_occs = []
 
-        return connected_occs
+            for occ in obj_occ.model.occs:
+                for cxn in occ.cxns:
+                    if (
+                        cxn.connected_to == obj_occ
+                        and (cxn.type in cxn_types if cxn_types is not None else True)
+                        and (
+                            occ.symbol in symbol_types
+                            if symbol_types is not None
+                            else True
+                        )
+                    ):
+                        in_connected_occs.append(occ)
+                        break
 
-    def find_model(
+        if direction in ["out", "both"]:
+            out_connected_occs = [
+                cxn.connected_to
+                for cxn in obj_occ.cxns
+                if (cxn.connected_to is not None)
+                and (cxn.type in cxn_types if cxn_types is not None else True)
+                and (
+                    cxn.connected_to.symbol in symbol_types
+                    if symbol_types is not None
+                    else True
+                )
+            ]
+
+        if direction == "in":
+            return in_connected_occs
+        elif direction == "out":
+            return out_connected_occs
+        else:
+            return in_connected_occs + out_connected_occs
+
+    def has_connection_to(
+        self, source: ObjOcc | ObjDef, target: ObjOcc | ObjDef
+    ) -> CxnOcc | CxnDef | None:
+        for cxn in source.cxns:
+            if cxn.connected_to == target:
+                return cxn
+
+    def get_model_by_guid(
         self,
         session: Session,
-        aris_id: str = None,
         guid: str = None,
     ) -> Model | None:
         """
-        Retrieve a model matching either guid or aris_id
+        Retrieve a model matching guid
         """
 
-        statement = select(Model).where(
-            or_(Model.guid == guid, Model.aris_id == aris_id)
-        )
+        statement = select(Model).where(Model.guid == guid)
+
+        return session.exec(statement).one_or_none()
+
+    def get_model_by_aris_id(
+        self,
+        session: Session,
+        aris_id: str = None,
+    ) -> Model | None:
+        """
+        Retrieve a model matching aris_id
+        """
+
+        statement = select(Model).where(Model.aris_id == aris_id)
 
         return session.exec(statement).one_or_none()
 
@@ -149,6 +183,7 @@ class AMLQuery:
             "obj_occ": ObjOcc,
             "models": Model,
         }
+
         for obj_type, db_type in stats.items():
             stats[obj_type] = session.exec(select(func.count(col(db_type.id)))).one()
 
