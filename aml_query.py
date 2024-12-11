@@ -1,7 +1,7 @@
 import os.path
 
 from sqlalchemy import func
-from sqlmodel import Session, col, create_engine, or_, select
+from sqlmodel import Session, col, create_engine, select
 
 from lib.db_datamodel import CxnDef, CxnOcc, Group, Model, ObjDef, ObjOcc
 from lib.parser import AMLParser
@@ -22,6 +22,8 @@ class AMLQuery:
         sqlite_url = f"sqlite:///{sqlite_filename}"
         self.engine = create_engine(sqlite_url, echo=False)
         print(f"Opened Database: '{sqlite_filename}'.\n")
+
+        self.__session = Session(self.engine)
 
     def get_assigned_fad(self, item: ObjDef | ObjOcc) -> Model | None:
         """
@@ -111,7 +113,6 @@ class AMLQuery:
 
     def get_model_by_guid(
         self,
-        session: Session,
         guid: str = None,
     ) -> Model | None:
         """
@@ -120,11 +121,10 @@ class AMLQuery:
 
         statement = select(Model).where(Model.guid == guid)
 
-        return session.exec(statement).one_or_none()
+        return self.__session.exec(statement).one_or_none()
 
     def get_model_by_aris_id(
         self,
-        session: Session,
         aris_id: str = None,
     ) -> Model | None:
         """
@@ -133,11 +133,19 @@ class AMLQuery:
 
         statement = select(Model).where(Model.aris_id == aris_id)
 
-        return session.exec(statement).one_or_none()
+        return self.__session.exec(statement).one_or_none()
+
+    def get_groups(
+        self,
+    ) -> list[Group]:
+        """
+        Retrieve groups.
+        """
+
+        return self.__session.exec(select(Group))
 
     def get_models(
         self,
-        session: Session,
         model_types: list[str] | str = None,
     ) -> list[Model]:
         """
@@ -152,7 +160,7 @@ class AMLQuery:
         else:
             statement = select(Model)
 
-        return session.exec(statement)
+        return self.__session.exec(statement)
 
     def filter_occs_by_symbol(
         self,
@@ -174,7 +182,7 @@ class AMLQuery:
 
         return [occ for occ in occs if occ.symbol in symbol_types]
 
-    def db_stats(self, session: Session) -> dict:
+    def db_stats(self) -> dict:
         stats = {
             "groups": Group,
             "cxn_defs": CxnDef,
@@ -185,6 +193,8 @@ class AMLQuery:
         }
 
         for obj_type, db_type in stats.items():
-            stats[obj_type] = session.exec(select(func.count(col(db_type.id)))).one()
+            stats[obj_type] = self.__session.exec(
+                select(func.count(col(db_type.id)))
+            ).one()
 
         return stats
