@@ -12,7 +12,7 @@ from aml_query import AMLQuery
 aml_query = AMLQuery("ARIS_AML_Export.xml", force_parse=False)
 
 
-print(aml_query.db_stats)
+print(aml_query.db_stats())
 
 for model in aml_query.get_models():
     print(model.name)
