@@ -58,28 +58,15 @@ class Group(SQLModel, AttrMixin, table=True):
         return (len(self.models) + len(self.groups)) > 0
 
 
-class CxnDefObjDefLink(SQLModel, table=True):
-    objdef_id: int = Field(
-        foreign_key="objdef.id",
-        primary_key=True,
-    )
-    cxndef_id: int = Field(
-        foreign_key="cxndef.id",
-        primary_key=True,
-    )
-
-
 class CxnDef(SQLModel, AttrMixin, table=True):
     id: int = Field(default=None, primary_key=True)
     aris_id: str
     guid: str
     type: str
 
-    # Even though "connected_to" is 1-to-1 we use a linking table because we already
-    # have a foreign key linking these two tables for "cxns" on the ObjDef.
-    # Is this a case for primaryjoin?
+    connected_to_id: int = Field(foreign_key="objdef.id")
     connected_to: "ObjDef" = Relationship(
-        link_model=CxnDefObjDefLink,
+        sa_relationship_kwargs={"foreign_keys": "CxnDef.connected_to_id"}
     )
 
     obj_def_id: int = Field(foreign_key="objdef.id")
@@ -103,7 +90,9 @@ class ObjDef(SQLModel, AttrMixin, table=True):
 
     linked_models: list["Model"] | None = Relationship(back_populates="superior_def")
 
-    cxns: list[CxnDef] | None = Relationship()
+    cxns: list[CxnDef] | None = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "CxnDef.obj_def_id"}
+    )
     attrs: list[Attr] | None = Relationship()
 
     occs: list["ObjOcc"] | None = Relationship(back_populates="obj_def")
@@ -131,17 +120,6 @@ class Model(SQLModel, AttrMixin, table=True):
     aris_type: str = Field(default="Model")
 
 
-class CxnOccObjOccLink(SQLModel, table=True):
-    objocc_id: int = Field(
-        foreign_key="objocc.id",
-        primary_key=True,
-    )
-    cxnocc_id: int = Field(
-        foreign_key="cxnocc.id",
-        primary_key=True,
-    )
-
-
 class CxnOcc(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     aris_id: str
@@ -149,11 +127,9 @@ class CxnOcc(SQLModel, table=True):
     cxn_def_id: int = Field(foreign_key="cxndef.id")
     cxn_def: CxnDef = Relationship(back_populates="occs")
 
-    # Even though "connected_to" is 1-to-1 we use a linking table because we already
-    # have a foreign key linking these two tables for "cxns" on the ObjOcc.
-    # Is this a case for primaryjoin?
+    connected_to_id: int = Field(foreign_key="objocc.id")
     connected_to: "ObjOcc" = Relationship(
-        link_model=CxnOccObjOccLink,
+        sa_relationship_kwargs={"foreign_keys": "CxnOcc.connected_to_id"}
     )
 
     obj_occ_id: int = Field(foreign_key="objocc.id")
@@ -183,7 +159,9 @@ class ObjOcc(SQLModel, table=True):
     model_id: int = Field(foreign_key="model.id")
     model: Model = Relationship(back_populates="occs")
 
-    cxns: list[CxnOcc] | None = Relationship()
+    cxns: list[CxnOcc] | None = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "CxnOcc.obj_occ_id"}
+    )
 
     aris_type: str = Field(default="ObjOcc")
 
