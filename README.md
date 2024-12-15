@@ -14,7 +14,7 @@ aml_query = AMLQuery("ARIS_AML_Export.xml", force_parse=False)
 
 print(aml_query.db_stats())
 
-for model in aml_query.get_models("MT_FUNC_ALLOC_DGM"):
+for model in aml_query.get_models(model_types="MT_FUNC_ALLOC_DGM"):
     print(model.name)
 
     for occ in model.occs:
